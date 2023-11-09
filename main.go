@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	giDevice "github.com/electricbubble/gidevice"
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,8 +30,8 @@ var CmdRoot = &cobra.Command{
 // Initialize CLI options.
 func init() {
 	// Logging
-	CmdRoot.PersistentFlags().String("logging.level", "info", "verbosity of logging output")
-	CmdRoot.PersistentFlags().Bool("logging.json", false, "change logging format to JSON")
+	CmdRoot.PersistentFlags().String("log-level", "info", "verbosity of logging output")
+	CmdRoot.PersistentFlags().Bool("log-as-json", false, "change logging format to JSON")
 }
 
 // setup will set up configuration management and logging.
@@ -66,14 +68,14 @@ func setup(cmd *cobra.Command, _ []string) error {
 	// Logging
 	var level slog.Level
 
-	err = level.UnmarshalText([]byte(viper.GetString("logging.level")))
+	err = level.UnmarshalText([]byte(viper.GetString("log-level")))
 	if err != nil {
 		return fmt.Errorf("parse log level: %w", err)
 	}
 
 	var handler slog.Handler
 
-	if viper.GetBool("logging.json") {
+	if viper.GetBool("log-as-json") {
 		// Use JSON handler
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	} else {
@@ -95,5 +97,61 @@ func main() {
 
 // runRoot is called when the "root" command is used.
 func runRoot(_ *cobra.Command, _ []string) {
-	slog.Info("Running")
+	// Create USBMUX connection
+	usbmux, err := giDevice.NewUsbmux()
+	if err != nil {
+		slog.Error("Unable to create USBMUX connection", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
+
+	// Read list of connected devices
+	devices, err := usbmux.Devices()
+	if err != nil {
+		slog.Error("Unable to read list of connected devices", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
+
+	// Dump device information
+	type DeviceInfo struct {
+		DeviceName                string `mapstructure:"DeviceName,omitempty"`
+		DeviceColor               string `mapstructure:"DeviceColor,omitempty"`
+		DeviceClass               string `mapstructure:"DeviceClass,omitempty"`
+		ProductVersion            string `mapstructure:"ProductVersion,omitempty"`
+		ProductType               string `mapstructure:"ProductType,omitempty"`
+		ProductName               string `mapstructure:"ProductName,omitempty"`
+		ModelNumber               string `mapstructure:"ModelNumber,omitempty"`
+		SerialNumber              string `mapstructure:"SerialNumber,omitempty"`
+		SIMStatus                 string `mapstructure:"SIMStatus,omitempty"`
+		PhoneNumber               string `mapstructure:"PhoneNumber,omitempty"`
+		CPUArchitecture           string `mapstructure:"CPUArchitecture,omitempty"`
+		ProtocolVersion           string `mapstructure:"ProtocolVersion,omitempty"`
+		RegionInfo                string `mapstructure:"RegionInfo,omitempty"`
+		TelephonyCapability       bool   `mapstructure:"TelephonyCapability,omitempty"`
+		TimeZone                  string `mapstructure:"TimeZone,omitempty"`
+		UniqueDeviceID            string `mapstructure:"UniqueDeviceID,omitempty"`
+		WiFiAddress               string `mapstructure:"WiFiAddress,omitempty"`
+		WirelessBoardSerialNumber string `mapstructure:"WirelessBoardSerialNumber,omitempty"`
+		BluetoothAddress          string `mapstructure:"BluetoothAddress,omitempty"`
+		BuildVersion              string `mapstructure:"BuildVersion,omitempty"`
+	}
+
+	for _, d := range devices {
+		// Read full lockdown information
+		detail, err := d.GetValue("", "")
+		if err != nil {
+			slog.Error("Unable to read lockdown information", slog.Any("error", err))
+			continue
+		}
+
+		// Parse into device info
+		var dd DeviceInfo
+
+		err = mapstructure.Decode(detail, &dd)
+		if err != nil {
+			slog.Error("Unable to parse into device info", slog.Any("error", err))
+			continue
+		}
+
+		slog.Info("Device", slog.Any("detail", dd))
+	}
 }
