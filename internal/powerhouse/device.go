@@ -2,6 +2,7 @@ package powerhouse
 
 import (
 	"fmt"
+	"sync"
 
 	giDevice "github.com/electricbubble/gidevice"
 	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
@@ -11,6 +12,11 @@ import (
 // Device ...
 type Device struct {
 	d giDevice.Device
+
+	// LockdownClient
+	ldc     *libimobiledevice.LockdownClient
+	ldcErr  error
+	ldcOnce sync.Once
 }
 
 // newDevice ...
@@ -68,4 +74,60 @@ func (d *Device) NewConnect(port int) (libimobiledevice.InnerConn, error) {
 // ReadPairRecord ...
 func (d *Device) ReadPairRecord() (*giDevice.PairRecord, error) {
 	return d.d.ReadPairRecord()
+}
+
+// LDC ...
+func (d *Device) LDC() *libimobiledevice.LockdownClient {
+	return d.ldc
+}
+
+// getLockdownClient ...
+func (d *Device) getLockdownClient() (*libimobiledevice.LockdownClient, error) {
+	// Deferred creation
+	d.ldcOnce.Do(func() {
+		// Connect to lockdown service
+		ldConn, err := d.d.NewConnect(giDevice.LockdownPort)
+		if err != nil {
+			d.ldcErr = fmt.Errorf("create lockdown connection: %w", err)
+			return
+		}
+
+		// Create client
+		d.ldc = libimobiledevice.NewLockdownClient(ldConn)
+	})
+
+	return d.ldc, d.ldcErr
+}
+
+// LockdownSend ...
+func (d *Device) LockdownSend(req any, resp any) error {
+	// ...
+	ldc, err := d.getLockdownClient()
+	if err != nil {
+		return fmt.Errorf("get lockdown client: %w", err)
+	}
+
+	// ...
+	packetReq, err := ldc.NewXmlPacket(req)
+	if err != nil {
+		return fmt.Errorf("create request packet: %w", err)
+	}
+
+	// ...
+	if err := ldc.SendPacket(packetReq); err != nil {
+		return fmt.Errorf("send request packet: %w", err)
+	}
+
+	// ...
+	packetResp, err := ldc.ReceivePacket()
+	if err != nil {
+		return fmt.Errorf("receive response packet: %w", err)
+	}
+
+	// ...
+	if err := packetResp.Unmarshal(resp); err != nil {
+		return fmt.Errorf("unmarshal response packet: %w", err)
+	}
+
+	return nil
 }

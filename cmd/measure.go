@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	giDevice "github.com/electricbubble/gidevice"
 	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
 	"github.com/spf13/cobra"
 	"howett.net/plist"
@@ -64,38 +63,20 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		iOSVersion[i], _ = strconv.Atoi(v)
 	}
 
-	// ...
-	lockdownConn, err := devices[0].NewConnect(giDevice.LockdownPort)
-	if err != nil {
-		slog.Error("Unable to create lockdown connection", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	lc := libimobiledevice.NewLockdownClient(lockdownConn)
-
-	// Create and send basic lockdown request
-	queryTypeReq, err := lc.NewXmlPacket(lc.NewBasicRequest(libimobiledevice.RequestTypeQueryType))
-	if err != nil {
-		slog.Error("Unable to create basic lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	if err := lc.SendPacket(queryTypeReq); err != nil {
-		slog.Error("Unable to send basic lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Receive lockdown response
-	queryTypeResp, err := lc.ReceivePacket()
-	if err != nil {
-		slog.Error("Unable to receive lockdown response", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
+	// Fetch lockdown query type
 	var queryType libimobiledevice.LockdownTypeResponse
 
-	if err := queryTypeResp.Unmarshal(&queryType); err != nil {
-		slog.Error("Unable to unmarshal", slog.Any("error", err))
+	err = devices[0].LockdownSend(
+		&libimobiledevice.LockdownBasicRequest{
+			Label:           libimobiledevice.BundleID,
+			ProtocolVersion: libimobiledevice.ProtocolVersion,
+			Request:         libimobiledevice.RequestTypeQueryType,
+		},
+		&queryType,
+	)
+
+	if err != nil {
+		slog.Error("Unable to fetch lockdown query type", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
@@ -106,62 +87,52 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
-	// Create and send start session lockdown request
-	startSessionReq, err := lc.NewXmlPacket(lc.NewStartSessionRequest(pairRecord.SystemBUID, pairRecord.HostID))
-	if err != nil {
-		slog.Error("Unable to create start session lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	if err = lc.SendPacket(startSessionReq); err != nil {
-		slog.Error("Unable to send start session lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Receive lockdown response
-	startSessionResp, err := lc.ReceivePacket()
-	if err != nil {
-		slog.Error("Unable to receive lockdown response", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
+	// Start lockdown session
 	var startSession libimobiledevice.LockdownStartSessionResponse
 
-	if err := startSessionResp.Unmarshal(&startSession); err != nil {
-		slog.Error("Unable to unmarshal", slog.Any("error", err))
+	err = devices[0].LockdownSend(
+		&libimobiledevice.LockdownStartSessionRequest{
+			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
+				Label:           libimobiledevice.BundleID,
+				ProtocolVersion: libimobiledevice.ProtocolVersion,
+				Request:         libimobiledevice.RequestTypeStartSession,
+			},
+			SystemBUID: pairRecord.SystemBUID,
+			HostID:     pairRecord.HostID,
+		},
+		&startSession,
+	)
+
+	if err != nil {
+		slog.Error("Unable to start lockdown session", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
+	// TODO
 	if startSession.EnableSessionSSL {
-		if err := lc.EnableSSL(iOSVersion, pairRecord); err != nil {
+		if err := devices[0].LDC().EnableSSL(iOSVersion, pairRecord); err != nil {
 			slog.Error("Unable to enable SSL", slog.Any("error", err))
 			os.Exit(1) //nolint
 		}
 	}
 
-	// Create and send start service lockdown request
-	startServiceReq, err := lc.NewXmlPacket(lc.NewStartServiceRequest(libimobiledevice.DiagnosticsRelayServiceName))
-	if err != nil {
-		slog.Error("Unable to create start service lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	if err = lc.SendPacket(startServiceReq); err != nil {
-		slog.Error("Unable to send start service lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Receive lockdown response
-	startServiceResp, err := lc.ReceivePacket()
-	if err != nil {
-		slog.Error("Unable to receive lockdown response", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
+	// Start lockdown service
 	var startService libimobiledevice.LockdownStartServiceResponse
 
-	if err := startServiceResp.Unmarshal(&startService); err != nil {
-		slog.Error("Unable to unmarshal", slog.Any("error", err))
+	err = devices[0].LockdownSend(
+		&libimobiledevice.LockdownStartServiceRequest{
+			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
+				Label:           libimobiledevice.BundleID,
+				ProtocolVersion: libimobiledevice.ProtocolVersion,
+				Request:         libimobiledevice.RequestTypeStartService,
+			},
+			Service: libimobiledevice.DiagnosticsRelayServiceName,
+		},
+		&startService,
+	)
+
+	if err != nil {
+		slog.Error("Unable to start lockdown service", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
