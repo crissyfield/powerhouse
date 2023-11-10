@@ -10,9 +10,10 @@ import (
 
 	giDevice "github.com/electricbubble/gidevice"
 	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
-	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 	"howett.net/plist"
+
+	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
 
 // CmdMeasure defines the CLI sub-command 'list'.
@@ -29,68 +30,34 @@ func init() {
 
 // runMeasure is called when the "test" command is used.
 func runMeasure(_ *cobra.Command, _ []string) {
-	// Create USBMUX connection
-	usbmux, err := giDevice.NewUsbmux()
+	// Create client
+	client, err := powerhouse.NewClient()
 	if err != nil {
-		slog.Error("Unable to create USBMUX connection", slog.Any("error", err))
+		slog.Error("Unable to create client", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Read list of connected devices
-	devices, err := usbmux.Devices()
+	devices, err := client.Devices()
 	if err != nil {
 		slog.Error("Unable to read list of connected devices", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	// ...
 	if len(devices) == 0 {
 		slog.Warn("No device connected. Exiting")
 		os.Exit(1) //nolint
 	}
 
-	// Dump device information
-	type DeviceInfo struct {
-		DeviceName                string `mapstructure:"DeviceName,omitempty"`
-		DeviceColor               string `mapstructure:"DeviceColor,omitempty"`
-		DeviceClass               string `mapstructure:"DeviceClass,omitempty"`
-		ProductVersion            string `mapstructure:"ProductVersion,omitempty"`
-		ProductType               string `mapstructure:"ProductType,omitempty"`
-		ProductName               string `mapstructure:"ProductName,omitempty"`
-		ModelNumber               string `mapstructure:"ModelNumber,omitempty"`
-		SerialNumber              string `mapstructure:"SerialNumber,omitempty"`
-		SIMStatus                 string `mapstructure:"SIMStatus,omitempty"`
-		PhoneNumber               string `mapstructure:"PhoneNumber,omitempty"`
-		CPUArchitecture           string `mapstructure:"CPUArchitecture,omitempty"`
-		ProtocolVersion           string `mapstructure:"ProtocolVersion,omitempty"`
-		RegionInfo                string `mapstructure:"RegionInfo,omitempty"`
-		TelephonyCapability       bool   `mapstructure:"TelephonyCapability,omitempty"`
-		TimeZone                  string `mapstructure:"TimeZone,omitempty"`
-		UniqueDeviceID            string `mapstructure:"UniqueDeviceID,omitempty"`
-		WiFiAddress               string `mapstructure:"WiFiAddress,omitempty"`
-		WirelessBoardSerialNumber string `mapstructure:"WirelessBoardSerialNumber,omitempty"`
-		BluetoothAddress          string `mapstructure:"BluetoothAddress,omitempty"`
-		BuildVersion              string `mapstructure:"BuildVersion,omitempty"`
-	}
-
-	// Read full lockdown information
-	detail, err := devices[0].GetValue("", "")
+	// Get device information
+	info, err := devices[0].Info()
 	if err != nil {
-		slog.Error("Unable to read lockdown information", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Parse into device info
-	var dd DeviceInfo
-
-	err = mapstructure.Decode(detail, &dd)
-	if err != nil {
-		slog.Error("Unable to parse into device info", slog.Any("error", err))
+		slog.Error("Unable to get device information", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Extract product version
-	pv := strings.Split(dd.ProductVersion, ".")
+	pv := strings.Split(info.ProductVersion, ".")
 
 	iOSVersion := make([]int, len(pv))
 	for i, v := range pv {
