@@ -87,45 +87,13 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
-	// Start lockdown service
-	var startService libimobiledevice.LockdownStartServiceResponse
+	// TODO: Defer stop lockdown session
 
-	err = devices[0].LockdownSend(
-		&libimobiledevice.LockdownStartServiceRequest{
-			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
-				Label:           libimobiledevice.BundleID,
-				ProtocolVersion: libimobiledevice.ProtocolVersion,
-				Request:         libimobiledevice.RequestTypeStartService,
-			},
-			Service: libimobiledevice.DiagnosticsRelayServiceName,
-		},
-		&startService,
-	)
-
+	// Start lockdown session
+	diagnosticRelayConn, err := devices[0].StartLockdownService(libimobiledevice.DiagnosticsRelayServiceName, pairRecord)
 	if err != nil {
 		slog.Error("Unable to start lockdown service", slog.Any("error", err))
 		os.Exit(1) //nolint
-	}
-
-	if startService.Error != "" {
-		slog.Error("Unable to start service", slog.String("error", startService.Error))
-		os.Exit(1) //nolint
-	}
-
-	// TODO: Stop lockdown session
-
-	// ...
-	diagnosticRelayConn, err := devices[0].NewConnect(startService.Port)
-	if err != nil {
-		slog.Error("Unable to create diagnostic relay connection", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	if startService.EnableServiceSSL {
-		if err := diagnosticRelayConn.Handshake(iOSVersion, pairRecord); err != nil {
-			slog.Error("Unable to enable SSL", slog.Any("error", err))
-			os.Exit(1) //nolint
-		}
 	}
 
 	drc := libimobiledevice.NewDiagnosticsRelayClient(diagnosticRelayConn)
