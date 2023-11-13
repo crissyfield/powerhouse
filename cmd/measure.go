@@ -55,7 +55,7 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
-	// Extract product version
+	// Extract product version // TODO: Remove
 	pv := strings.Split(info.ProductVersion, ".")
 
 	iOSVersion := make([]int, len(pv))
@@ -63,57 +63,28 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		iOSVersion[i], _ = strconv.Atoi(v)
 	}
 
-	// Fetch lockdown query type
-	var queryType libimobiledevice.LockdownTypeResponse
-
-	err = devices[0].LockdownSend(
-		&libimobiledevice.LockdownBasicRequest{
-			Label:           libimobiledevice.BundleID,
-			ProtocolVersion: libimobiledevice.ProtocolVersion,
-			Request:         libimobiledevice.RequestTypeQueryType,
-		},
-		&queryType,
-	)
-
-	if err != nil {
-		slog.Error("Unable to fetch lockdown query type", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Read pair record
-	pairRecord, err := devices[0].ReadPairRecord()
-	if err != nil {
-		slog.Error("Unable to read pair record", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
+	// // Fetch lockdown query type // TODO: No longer needed?
+	// var queryType libimobiledevice.LockdownTypeResponse
+	//
+	// err = devices[0].LockdownSend(
+	// 	&libimobiledevice.LockdownBasicRequest{
+	// 		Label:           libimobiledevice.BundleID,
+	// 		ProtocolVersion: libimobiledevice.ProtocolVersion,
+	// 		Request:         libimobiledevice.RequestTypeQueryType,
+	// 	},
+	// 	&queryType,
+	// )
+	//
+	// if err != nil {
+	// 	slog.Error("Unable to fetch lockdown query type", slog.Any("error", err))
+	// 	os.Exit(1) //nolint
+	// }
 
 	// Start lockdown session
-	var startSession libimobiledevice.LockdownStartSessionResponse
-
-	err = devices[0].LockdownSend(
-		&libimobiledevice.LockdownStartSessionRequest{
-			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
-				Label:           libimobiledevice.BundleID,
-				ProtocolVersion: libimobiledevice.ProtocolVersion,
-				Request:         libimobiledevice.RequestTypeStartSession,
-			},
-			SystemBUID: pairRecord.SystemBUID,
-			HostID:     pairRecord.HostID,
-		},
-		&startSession,
-	)
-
+	pairRecord, err := devices[0].StartLockdownSession()
 	if err != nil {
 		slog.Error("Unable to start lockdown session", slog.Any("error", err))
 		os.Exit(1) //nolint
-	}
-
-	// TODO
-	if startSession.EnableSessionSSL {
-		if err := devices[0].LDC().EnableSSL(iOSVersion, pairRecord); err != nil {
-			slog.Error("Unable to enable SSL", slog.Any("error", err))
-			os.Exit(1) //nolint
-		}
 	}
 
 	// Start lockdown service

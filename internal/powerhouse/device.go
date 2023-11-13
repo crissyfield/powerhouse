@@ -2,6 +2,8 @@ package powerhouse
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	giDevice "github.com/electricbubble/gidevice"
@@ -17,6 +19,16 @@ type Device struct {
 	ldc     *libimobiledevice.LockdownClient
 	ldcErr  error
 	ldcOnce sync.Once
+
+	// pair record
+	pairRecord     *giDevice.PairRecord
+	pairRecordErr  error
+	pairRecordOnce sync.Once
+
+	// iOS version
+	iOSVersion     []int
+	iOSVersionErr  error
+	iOSVersionOnce sync.Once
 }
 
 // newDevice ...
@@ -66,19 +78,55 @@ func (d *Device) Info() (*DeviceInfo, error) {
 	return &di, nil
 }
 
-// NewConnect ...
-func (d *Device) NewConnect(port int) (libimobiledevice.InnerConn, error) {
-	return d.d.NewConnect(port)
-}
+// StartLockdownSession ...
+func (d *Device) StartLockdownSession() (*giDevice.PairRecord, error) {
+	// Get iOS version
+	iosv, err := d.getIOSVersion()
+	if err != nil {
+		return nil, fmt.Errorf("get iOS version: %w", err)
+	}
 
-// ReadPairRecord ...
-func (d *Device) ReadPairRecord() (*giDevice.PairRecord, error) {
-	return d.d.ReadPairRecord()
-}
+	// Get pair record
+	pairRecord, err := d.getPairRecord()
+	if err != nil {
+		return nil, fmt.Errorf("get pair record: %w", err)
+	}
 
-// LDC ...
-func (d *Device) LDC() *libimobiledevice.LockdownClient {
-	return d.ldc
+	// Start lockdown session
+	var startSession libimobiledevice.LockdownStartSessionResponse
+
+	err = d.LockdownSend(
+		&libimobiledevice.LockdownStartSessionRequest{
+			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
+				Label:           libimobiledevice.BundleID,
+				ProtocolVersion: libimobiledevice.ProtocolVersion,
+				Request:         libimobiledevice.RequestTypeStartSession,
+			},
+			SystemBUID: pairRecord.SystemBUID,
+			HostID:     pairRecord.HostID,
+		},
+		&startSession,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("start lockdown session: %w", err)
+	}
+
+	// Optionally enable SSL
+	if startSession.EnableSessionSSL {
+		// Get lockdown client
+		ldc, err := d.getLockdownClient()
+		if err != nil {
+			return nil, fmt.Errorf("get lockdown cient: %w", err)
+		}
+
+		// Enable SSL
+		if err := ldc.EnableSSL(iosv, pairRecord); err != nil {
+			return nil, fmt.Errorf("enable SSL: %w", err)
+		}
+	}
+
+	return pairRecord, nil
 }
 
 // getLockdownClient ...
@@ -99,7 +147,71 @@ func (d *Device) getLockdownClient() (*libimobiledevice.LockdownClient, error) {
 	return d.ldc, d.ldcErr
 }
 
-// LockdownSend ...
+// gerPairRecord ...
+func (d *Device) getPairRecord() (*giDevice.PairRecord, error) {
+	// Deferred creation
+	d.pairRecordOnce.Do(func() {
+		// Read pair record
+		d.pairRecord, d.pairRecordErr = d.d.ReadPairRecord()
+	})
+
+	return d.pairRecord, d.pairRecordErr
+}
+
+// getIOSVersion ...
+func (d *Device) getIOSVersion() ([]int, error) {
+	// Deferred fetch
+	d.iOSVersionOnce.Do(func() {
+		// Get lockdown product version
+		var value libimobiledevice.LockdownValueResponse
+
+		err := d.LockdownSend(
+			&libimobiledevice.LockdownValueRequest{
+				LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
+					Label:           libimobiledevice.BundleID,
+					ProtocolVersion: libimobiledevice.ProtocolVersion,
+					Request:         libimobiledevice.RequestTypeGetValue,
+				},
+				Domain: "",
+				Key:    "ProductVersion",
+			},
+			&value,
+		)
+
+		if err != nil {
+			d.iOSVersionErr = fmt.Errorf("get lockdown product version: %w", err)
+			return
+		}
+
+		productVersion, ok := value.Value.(string)
+		if !ok {
+			d.iOSVersionErr = fmt.Errorf("unexpected product version: %v", value.Value)
+			return
+		}
+
+		// Extract product version
+		pv := strings.Split(productVersion, ".")
+
+		d.iOSVersion = make([]int, len(pv))
+		for i, v := range pv {
+			d.iOSVersion[i], _ = strconv.Atoi(v)
+		}
+	})
+
+	return d.iOSVersion, d.iOSVersionErr
+}
+
+// NewConnect ... // TODO: Get rid of
+func (d *Device) NewConnect(port int) (libimobiledevice.InnerConn, error) {
+	return d.d.NewConnect(port)
+}
+
+// LDC ... TODO: Get rid of
+func (d *Device) LDC() *libimobiledevice.LockdownClient {
+	return d.ldc
+}
+
+// LockdownSend ... TODO: Get rif of
 func (d *Device) LockdownSend(req any, resp any) error {
 	// ...
 	ldc, err := d.getLockdownClient()
