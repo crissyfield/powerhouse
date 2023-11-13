@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -55,6 +56,8 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
+	fmt.Printf("%v\n", info)
+
 	// Extract product version // TODO: Remove
 	pv := strings.Split(info.ProductVersion, ".")
 
@@ -81,16 +84,16 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	// }
 
 	// Start lockdown session
-	pairRecord, err := devices[0].StartLockdownSession()
+	session, err := devices[0].StartLockdownSession()
 	if err != nil {
 		slog.Error("Unable to start lockdown session", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	// TODO: Defer stop lockdown session
+	// TODO: defer session.Stop()
 
 	// Start lockdown session
-	diagnosticRelayConn, err := devices[0].StartLockdownService(libimobiledevice.DiagnosticsRelayServiceName, pairRecord)
+	diagnosticRelayConn, err := session.StartService(libimobiledevice.DiagnosticsRelayServiceName)
 	if err != nil {
 		slog.Error("Unable to start lockdown service", slog.Any("error", err))
 		os.Exit(1) //nolint

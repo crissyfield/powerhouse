@@ -33,22 +33,18 @@ func NewClient() (*Client, error) {
 func (c *Client) Devices() ([]*Device, error) {
 	// ...
 	c.devicesOnce.Do(func() {
-		// ...
+		// Get all devices
 		ds, err := c.usbmux.Devices()
 		if err != nil {
 			c.devicesErr = fmt.Errorf("read devices: %w", err)
 			return
 		}
 
-		// ...
+		// Store
 		devices := make([]*Device, len(ds))
 
 		for i, d := range ds {
-			devices[i], err = newDevice(d)
-			if err != nil {
-				c.devicesErr = fmt.Errorf("initialize device: %w", err)
-				return
-			}
+			devices[i] = &Device{d: d}
 		}
 
 		c.devices = devices

@@ -21,7 +21,7 @@ type Device struct {
 	ldcOnce sync.Once
 
 	// pair record
-	pairRecord     *giDevice.PairRecord
+	pairRecord     *libimobiledevice.PairRecord
 	pairRecordErr  error
 	pairRecordOnce sync.Once
 
@@ -29,11 +29,6 @@ type Device struct {
 	iOSVersion     []int
 	iOSVersionErr  error
 	iOSVersionOnce sync.Once
-}
-
-// newDevice ...
-func newDevice(d giDevice.Device) (*Device, error) {
-	return &Device{d: d}, nil
 }
 
 // DeviceInfo ...
@@ -62,15 +57,30 @@ type DeviceInfo struct {
 
 // Info ...
 func (d *Device) Info() (*DeviceInfo, error) {
-	detail, err := d.d.GetValue("", "")
+	// Get lockdown product version
+	var value libimobiledevice.LockdownValueResponse
+
+	err := d.lockdownSend(
+		&libimobiledevice.LockdownValueRequest{
+			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
+				Label:           libimobiledevice.BundleID,
+				ProtocolVersion: libimobiledevice.ProtocolVersion,
+				Request:         libimobiledevice.RequestTypeGetValue,
+			},
+			Domain: "",
+			Key:    "",
+		},
+		&value,
+	)
+
 	if err != nil {
-		return nil, fmt.Errorf("read lockdown device information: %w", err)
+		return nil, fmt.Errorf("get lockdown information: %w", err)
 	}
 
 	// Parse into device info
 	var di DeviceInfo
 
-	err = mapstructure.Decode(detail, &di)
+	err = mapstructure.Decode(value.Value, &di)
 	if err != nil {
 		return nil, fmt.Errorf("parse lockdown device information: %w", err)
 	}
@@ -79,7 +89,7 @@ func (d *Device) Info() (*DeviceInfo, error) {
 }
 
 // StartLockdownSession ...
-func (d *Device) StartLockdownSession() (*giDevice.PairRecord, error) {
+func (d *Device) StartLockdownSession() (*LockdownSession, error) {
 	// Get iOS version
 	iosv, err := d.getIOSVersion()
 	if err != nil {
@@ -126,54 +136,7 @@ func (d *Device) StartLockdownSession() (*giDevice.PairRecord, error) {
 		}
 	}
 
-	return pairRecord, nil
-}
-
-// StartLockdownService ...
-func (d *Device) StartLockdownService(serviceName string, pairRecord *giDevice.PairRecord) (libimobiledevice.InnerConn, error) {
-	// Get iOS version
-	iosv, err := d.getIOSVersion()
-	if err != nil {
-		return nil, fmt.Errorf("get iOS version: %w", err)
-	}
-
-	// Start lockdown service
-	var startService libimobiledevice.LockdownStartServiceResponse
-
-	err = d.lockdownSend(
-		&libimobiledevice.LockdownStartServiceRequest{
-			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
-				Label:           libimobiledevice.BundleID,
-				ProtocolVersion: libimobiledevice.ProtocolVersion,
-				Request:         libimobiledevice.RequestTypeStartService,
-			},
-			Service: serviceName,
-		},
-		&startService,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("start lockdown service: %w", err)
-	}
-
-	if startService.Error != "" {
-		return nil, fmt.Errorf("start lockdown service (server): %s", startService.Error)
-	}
-
-	// Create new connection
-	innerConn, err := d.d.NewConnect(startService.Port)
-	if err != nil {
-		return nil, fmt.Errorf("create connection: %w", err)
-	}
-
-	// Optionally, enable SSH
-	if startService.EnableServiceSSL {
-		if err := innerConn.Handshake(iosv, pairRecord); err != nil {
-			return nil, fmt.Errorf("enable SSL: %w", err)
-		}
-	}
-
-	return innerConn, nil
+	return &LockdownSession{pr: pairRecord, d: d}, nil
 }
 
 // getLockdownClient ...
