@@ -8,22 +8,38 @@ import (
 
 // LockdownSession ...
 type LockdownSession struct {
-	pr *libimobiledevice.PairRecord
-	d  *Device
+	// Related lockdown client
+	ldc *LockdownClient
+}
+
+// newLockdownSession ...
+func newLockdownSession(ldc *LockdownClient) *LockdownSession {
+	return &LockdownSession{ldc: ldc}
+}
+
+// Close ...
+func (*LockdownSession) Close() {
+	// TODO
 }
 
 // StartService ...
-func (ls *LockdownSession) StartService(serviceName string) (libimobiledevice.InnerConn, error) {
+func (lds *LockdownSession) StartService(serviceName string) (libimobiledevice.InnerConn, error) {
 	// Get iOS version
-	iosv, err := ls.d.getIOSVersion()
+	ver, err := lds.ldc.dev.iOSVersionFn()
 	if err != nil {
 		return nil, fmt.Errorf("get iOS version: %w", err)
+	}
+
+	// Get pair record
+	pairRecord, err := lds.ldc.dev.readPairRecordFn()
+	if err != nil {
+		return nil, fmt.Errorf("get pair record: %w", err)
 	}
 
 	// Start lockdown service
 	var startService libimobiledevice.LockdownStartServiceResponse
 
-	err = ls.d.lockdownSend(
+	err = lds.ldc.send(
 		&libimobiledevice.LockdownStartServiceRequest{
 			LockdownBasicRequest: libimobiledevice.LockdownBasicRequest{
 				Label:           libimobiledevice.BundleID,
@@ -44,17 +60,17 @@ func (ls *LockdownSession) StartService(serviceName string) (libimobiledevice.In
 	}
 
 	// Create new connection
-	innerConn, err := ls.d.d.NewConnect(startService.Port)
+	conn, err := lds.ldc.dev.dev.NewConnect(startService.Port)
 	if err != nil {
 		return nil, fmt.Errorf("create connection: %w", err)
 	}
 
 	// Optionally, enable SSH
 	if startService.EnableServiceSSL {
-		if err := innerConn.Handshake(iosv, ls.pr); err != nil {
+		if err := conn.Handshake(ver, pairRecord); err != nil {
 			return nil, fmt.Errorf("enable SSL: %w", err)
 		}
 	}
 
-	return innerConn, nil
+	return conn, nil
 }

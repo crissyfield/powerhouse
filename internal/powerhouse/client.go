@@ -9,10 +9,11 @@ import (
 
 // Client ...
 type Client struct {
-	usbmux      giDevice.Usbmux
-	devices     []*Device
-	devicesErr  error
-	devicesOnce sync.Once
+	// Underlying USBMUX
+	usbmux giDevice.Usbmux
+
+	// Function to return devices
+	devicesFn func() ([]*Device, error)
 }
 
 // NewClient ...
@@ -23,32 +24,43 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("create USBMUX connection: %w", err)
 	}
 
-	// ...
-	return &Client{
-		usbmux: usbmux,
-	}, nil
+	// Return new client
+	c := &Client{usbmux: usbmux}
+
+	c.devicesFn = c.devicesFnOnce()
+
+	return c, nil
 }
 
 // Devices ...
 func (c *Client) Devices() ([]*Device, error) {
-	// ...
-	c.devicesOnce.Do(func() {
-		// Get all devices
-		ds, err := c.usbmux.Devices()
-		if err != nil {
-			c.devicesErr = fmt.Errorf("read devices: %w", err)
-			return
-		}
+	return c.devicesFn()
+}
 
-		// Store
-		devices := make([]*Device, len(ds))
+// devicesFnOnce ...
+func (c *Client) devicesFnOnce() func() ([]*Device, error) {
+	var devices []*Device
+	var err error
+	var once sync.Once
 
-		for i, d := range ds {
-			devices[i] = &Device{d: d}
-		}
+	// return function that created devices once
+	return func() ([]*Device, error) {
+		once.Do(func() {
+			// Get all devices
+			innerDevices, innerErr := c.usbmux.Devices()
+			if innerErr != nil {
+				err = fmt.Errorf("read devices: %w", innerErr)
+				return
+			}
 
-		c.devices = devices
-	})
+			// Wrap devices
+			devices = make([]*Device, len(innerDevices))
 
-	return c.devices, c.devicesErr
+			for i, dev := range innerDevices {
+				devices[i] = newDevice(dev)
+			}
+		})
+
+		return devices, err
+	}
 }

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
 	"github.com/spf13/cobra"
@@ -50,21 +48,13 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	}
 
 	// Get device information
-	info, err := devices[0].Info()
+	iOSVersion, err := devices[0].IOSVersion()
 	if err != nil {
-		slog.Error("Unable to get device information", slog.Any("error", err))
+		slog.Error("Unable to get iOS version", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	fmt.Printf("%v\n", info)
-
-	// Extract product version // TODO: Remove
-	pv := strings.Split(info.ProductVersion, ".")
-
-	iOSVersion := make([]int, len(pv))
-	for i, v := range pv {
-		iOSVersion[i], _ = strconv.Atoi(v)
-	}
+	fmt.Printf("%v\n", iOSVersion)
 
 	// // Fetch lockdown query type // TODO: No longer needed?
 	// var queryType libimobiledevice.LockdownTypeResponse
@@ -83,17 +73,26 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	// 	os.Exit(1) //nolint
 	// }
 
-	// Start lockdown session
-	session, err := devices[0].StartLockdownSession()
+	// Create lockdown client
+	ldc, err := powerhouse.NewLockdownClient(devices[0])
+	if err != nil {
+		slog.Error("Unable to create lockdown client", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
+
+	defer ldc.Close()
+
+	// Start lockdown lds
+	lds, err := ldc.StartSession()
 	if err != nil {
 		slog.Error("Unable to start lockdown session", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	// TODO: defer session.Stop()
+	defer lds.Close()
 
-	// Start lockdown session
-	diagnosticRelayConn, err := session.StartService(libimobiledevice.DiagnosticsRelayServiceName)
+	// Start diagnostic service
+	diagnosticRelayConn, err := lds.StartService(libimobiledevice.DiagnosticsRelayServiceName)
 	if err != nil {
 		slog.Error("Unable to start lockdown service", slog.Any("error", err))
 		os.Exit(1) //nolint
