@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
-	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -39,32 +38,8 @@ func (*LockdownClient) Close() {
 	// TODO
 }
 
-// DeviceInfo ...
-type DeviceInfo struct {
-	DeviceName                string `mapstructure:"DeviceName,omitempty"`
-	DeviceColor               string `mapstructure:"DeviceColor,omitempty"`
-	DeviceClass               string `mapstructure:"DeviceClass,omitempty"`
-	ProductVersion            string `mapstructure:"ProductVersion,omitempty"`
-	ProductType               string `mapstructure:"ProductType,omitempty"`
-	ProductName               string `mapstructure:"ProductName,omitempty"`
-	ModelNumber               string `mapstructure:"ModelNumber,omitempty"`
-	SerialNumber              string `mapstructure:"SerialNumber,omitempty"`
-	SIMStatus                 string `mapstructure:"SIMStatus,omitempty"`
-	PhoneNumber               string `mapstructure:"PhoneNumber,omitempty"`
-	CPUArchitecture           string `mapstructure:"CPUArchitecture,omitempty"`
-	ProtocolVersion           string `mapstructure:"ProtocolVersion,omitempty"`
-	RegionInfo                string `mapstructure:"RegionInfo,omitempty"`
-	TelephonyCapability       bool   `mapstructure:"TelephonyCapability,omitempty"`
-	TimeZone                  string `mapstructure:"TimeZone,omitempty"`
-	UniqueDeviceID            string `mapstructure:"UniqueDeviceID,omitempty"`
-	WiFiAddress               string `mapstructure:"WiFiAddress,omitempty"`
-	WirelessBoardSerialNumber string `mapstructure:"WirelessBoardSerialNumber,omitempty"`
-	BluetoothAddress          string `mapstructure:"BluetoothAddress,omitempty"`
-	BuildVersion              string `mapstructure:"BuildVersion,omitempty"`
-}
-
-// DeviceInfo ...
-func (ldc *LockdownClient) DeviceInfo() (*DeviceInfo, error) {
+// Info ...
+func (ldc *LockdownClient) Info() (any, error) {
 	// Get lockdown product version
 	var value libimobiledevice.LockdownValueResponse
 
@@ -85,15 +60,7 @@ func (ldc *LockdownClient) DeviceInfo() (*DeviceInfo, error) {
 		return nil, fmt.Errorf("get lockdown information: %w", err)
 	}
 
-	// Parse into device info
-	var di DeviceInfo
-
-	err = mapstructure.Decode(value.Value, &di)
-	if err != nil {
-		return nil, fmt.Errorf("parse lockdown device information: %w", err)
-	}
-
-	return &di, nil
+	return value.Value, nil
 }
 
 // StartSession ...

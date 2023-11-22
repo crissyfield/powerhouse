@@ -37,6 +37,18 @@ func newDevice(device giDevice.Device) *Device {
 	return dev
 }
 
+// Info ...
+func (dev *Device) Info() (any, error) {
+	// Get internal lockdown client
+	ldc, innerErr := dev.internalLockdownClientFn()
+	if innerErr != nil {
+		return nil, fmt.Errorf("get internal lockdown client: %w", innerErr)
+	}
+
+	// ...
+	return ldc.Info()
+}
+
 // IOSVersion ...
 func (dev *Device) IOSVersion() ([]int, error) {
 	return dev.iOSVersionFn()

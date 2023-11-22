@@ -22,6 +22,20 @@ func (*LockdownSession) Close() {
 	// TODO
 }
 
+// StartDiagnosticRelayService ...
+func (lds *LockdownSession) StartDiagnosticRelayService() (*DiagnosticRelayClient, error) {
+	// Start service
+	conn, err := lds.StartService(libimobiledevice.DiagnosticsRelayServiceName)
+	if err != nil {
+		return nil, fmt.Errorf("start service: %w", err)
+	}
+
+	// Create diagnostic relay client
+	drc := libimobiledevice.NewDiagnosticsRelayClient(conn)
+
+	return newDiagnosticRelayClient(drc), nil
+}
+
 // StartService ...
 func (lds *LockdownSession) StartService(serviceName string) (libimobiledevice.InnerConn, error) {
 	// Get iOS version

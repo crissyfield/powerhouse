@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
 	"log/slog"
 	"os"
 
-	"github.com/electricbubble/gidevice/pkg/libimobiledevice"
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
-	"howett.net/plist"
 
 	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
@@ -47,31 +43,43 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
-	// Get device information
-	iOSVersion, err := devices[0].IOSVersion()
+	// ...
+	var deviceInfo struct {
+		DeviceName                string `mapstructure:"DeviceName,omitempty"`
+		DeviceColor               string `mapstructure:"DeviceColor,omitempty"`
+		DeviceClass               string `mapstructure:"DeviceClass,omitempty"`
+		ProductVersion            string `mapstructure:"ProductVersion,omitempty"`
+		ProductType               string `mapstructure:"ProductType,omitempty"`
+		ProductName               string `mapstructure:"ProductName,omitempty"`
+		ModelNumber               string `mapstructure:"ModelNumber,omitempty"`
+		SerialNumber              string `mapstructure:"SerialNumber,omitempty"`
+		SIMStatus                 string `mapstructure:"SIMStatus,omitempty"`
+		PhoneNumber               string `mapstructure:"PhoneNumber,omitempty"`
+		CPUArchitecture           string `mapstructure:"CPUArchitecture,omitempty"`
+		ProtocolVersion           string `mapstructure:"ProtocolVersion,omitempty"`
+		RegionInfo                string `mapstructure:"RegionInfo,omitempty"`
+		TelephonyCapability       bool   `mapstructure:"TelephonyCapability,omitempty"`
+		TimeZone                  string `mapstructure:"TimeZone,omitempty"`
+		UniqueDeviceID            string `mapstructure:"UniqueDeviceID,omitempty"`
+		WiFiAddress               string `mapstructure:"WiFiAddress,omitempty"`
+		WirelessBoardSerialNumber string `mapstructure:"WirelessBoardSerialNumber,omitempty"`
+		BluetoothAddress          string `mapstructure:"BluetoothAddress,omitempty"`
+		BuildVersion              string `mapstructure:"BuildVersion,omitempty"`
+	}
+
+	info, err := devices[0].Info()
 	if err != nil {
-		slog.Error("Unable to get iOS version", slog.Any("error", err))
+		slog.Error("Unable to read device info", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	fmt.Printf("%v\n", iOSVersion)
+	err = mapstructure.Decode(info, &deviceInfo)
+	if err != nil {
+		slog.Error("Unable to parse device info", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
 
-	// // Fetch lockdown query type // TODO: No longer needed?
-	// var queryType libimobiledevice.LockdownTypeResponse
-	//
-	// err = devices[0].LockdownSend(
-	// 	&libimobiledevice.LockdownBasicRequest{
-	// 		Label:           libimobiledevice.BundleID,
-	// 		ProtocolVersion: libimobiledevice.ProtocolVersion,
-	// 		Request:         libimobiledevice.RequestTypeQueryType,
-	// 	},
-	// 	&queryType,
-	// )
-	//
-	// if err != nil {
-	// 	slog.Error("Unable to fetch lockdown query type", slog.Any("error", err))
-	// 	os.Exit(1) //nolint
-	// }
+	slog.Info("Device Info", slog.Any("info", deviceInfo))
 
 	// Create lockdown client
 	ldc, err := powerhouse.NewLockdownClient(devices[0])
@@ -92,97 +100,41 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	defer lds.Close()
 
 	// Start diagnostic service
-	diagnosticRelayConn, err := lds.StartService(libimobiledevice.DiagnosticsRelayServiceName)
+	drc, err := lds.StartDiagnosticRelayService()
 	if err != nil {
-		slog.Error("Unable to start lockdown service", slog.Any("error", err))
+		slog.Error("Unable to start diagnostic relay service", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	drc := libimobiledevice.NewDiagnosticsRelayClient(diagnosticRelayConn)
+	defer drc.Close()
+
+	// Read battery IORegistry entries
+	response, err := drc.ReadIORegistry("AppleSmartBattery", "")
+	if err != nil {
+		slog.Error("Unable to read AppleSmartBattery IORegistry entry", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
 
 	// ...
-	type DiagnosticsRelayIORegistryRequest struct {
-		Request    string `plist:"Request"`
-		EntryName  string `plist:"EntryName,omitempty"`
-		EntryClass string `plist:"EntryClass,omitempty"`
+	var battery struct {
+		UpdateTime              uint64 `mapstructure:"UpdateTime"`
+		ExternalConnected       bool   `mapstructure:"ExternalConnected"`
+		IsCharging              bool   `mapstructure:"IsCharging"`
+		FullyCharged            bool   `mapstructure:"FullyCharged"`
+		CycleCount              uint64 `mapstructure:"CycleCount"`
+		DesignCapacity          uint64 `mapstructure:"DesignCapacity"`
+		AppleRawMaxCapacity     uint64 `mapstructure:"AppleRawMaxCapacity"`
+		AppleRawCurrentCapacity uint64 `mapstructure:"AppleRawCurrentCapacity"`
+		AppleRawBatteryVoltage  uint64 `mapstructure:"AppleRawBatteryVoltage"`
+		InstantAmperage         uint64 `mapstructure:"InstantAmperage"`
 	}
 
-	ioRegistryReq, err := drc.NewXmlPacket(&DiagnosticsRelayIORegistryRequest{
-		Request:   "IORegistry",
-		EntryName: "AppleSmartBattery",
-	})
-
+	err = mapstructure.Decode(response, &battery)
 	if err != nil {
-		slog.Error("Unable to create IORegistry lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	if err = drc.SendPacket(ioRegistryReq); err != nil {
-		slog.Error("Unable to send IORegistry lockdown request", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// Receive lockdown response
-	bufLen, err := diagnosticRelayConn.Read(4)
-	if err != nil {
-		slog.Error("Unable to receive packet length", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	lenPkg := binary.BigEndian.Uint32(bufLen)
-
-	buffer := bytes.NewBuffer([]byte{})
-	buffer.Write(bufLen)
-
-	buf, err := diagnosticRelayConn.Read(int(lenPkg))
-	if err != nil {
-		slog.Error("Unable to receive packet body", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	buffer.Write(buf)
-
-	type servicePacket struct {
-		length uint32
-		body   []byte
-	}
-
-	var respPkt servicePacket
-	err = binary.Read(buffer, binary.BigEndian, &respPkt.length)
-	if err != nil {
-		slog.Error("Unable to unpack packet", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-	respPkt.body = buffer.Bytes()
-
-	var reply struct {
-		libimobiledevice.LockdownBasicResponse
-		Diagnostics struct {
-			IORegistry struct {
-				UpdateTime              uint64 `plist:"UpdateTime"`
-				ExternalConnected       bool   `plist:"ExternalConnected"`
-				IsCharging              bool   `plist:"IsCharging"`
-				FullyCharged            bool   `plist:"FullyCharged"`
-				CycleCount              uint64 `plist:"CycleCount"`
-				DesignCapacity          uint64 `plist:"DesignCapacity"`
-				AppleRawMaxCapacity     uint64 `plist:"AppleRawMaxCapacity"`
-				AppleRawCurrentCapacity uint64 `plist:"AppleRawCurrentCapacity"`
-				AppleRawBatteryVoltage  uint64 `plist:"AppleRawBatteryVoltage"`
-				InstantAmperage         uint64 `plist:"InstantAmperage"`
-			} `plist:"IORegistry"`
-		} `plist:"Diagnostics"`
-	}
-
-	if _, err := plist.Unmarshal(respPkt.body, &reply); err != nil {
 		slog.Error("Unable to unmarshal", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	if reply.Error != "" {
-		slog.Error("???", slog.String("error", reply.Error))
-		os.Exit(1) //nolint
-	}
-
 	// ...
-	slog.Info("Battery", slog.Any("ioregistry", reply.Diagnostics.IORegistry))
+	slog.Info("Battery", slog.Any("ioregistry", battery))
 }
