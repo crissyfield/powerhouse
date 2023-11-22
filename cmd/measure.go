@@ -7,7 +7,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 
-	"github.com/crissyfield/powerhouse/internal/powerhouse"
+	"github.com/crissyfield/powerhouse/internal/idevice"
 )
 
 // CmdMeasure defines the CLI sub-command 'list'.
@@ -25,7 +25,7 @@ func init() {
 // runMeasure is called when the "test" command is used.
 func runMeasure(_ *cobra.Command, _ []string) {
 	// Create client
-	client, err := powerhouse.NewClient()
+	client, err := idevice.NewClient()
 	if err != nil {
 		slog.Error("Unable to create client", slog.Any("error", err))
 		os.Exit(1) //nolint
@@ -82,7 +82,7 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	slog.Info("Device Info", slog.Any("info", deviceInfo))
 
 	// Create lockdown client
-	ldc, err := powerhouse.NewLockdownClient(devices[0])
+	ldc, err := idevice.NewLockdownClient(devices[0])
 	if err != nil {
 		slog.Error("Unable to create lockdown client", slog.Any("error", err))
 		os.Exit(1) //nolint
