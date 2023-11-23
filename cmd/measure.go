@@ -126,7 +126,7 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		AppleRawMaxCapacity     uint64 `mapstructure:"AppleRawMaxCapacity"`
 		AppleRawCurrentCapacity uint64 `mapstructure:"AppleRawCurrentCapacity"`
 		AppleRawBatteryVoltage  uint64 `mapstructure:"AppleRawBatteryVoltage"`
-		InstantAmperage         uint64 `mapstructure:"InstantAmperage"`
+		InstantAmperage         int64  `mapstructure:"InstantAmperage"`
 	}
 
 	err = mapstructure.Decode(response, &battery)
