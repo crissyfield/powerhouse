@@ -3,7 +3,6 @@ package powerhouse
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -58,8 +57,9 @@ func newDevice(idev *idevice.Device) (*Device, error) {
 	}, nil
 }
 
-// ReportMetrics starts reporting metrics on the returned channel, until the context is canceled.
-func (dev *Device) ReportMetrics(ctx context.Context) (<-chan any, error) {
+// ReportBatteryMetrics starts reporting battery metrics on the returned channel, until the context is
+// canceled.
+func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMetrics, error) {
 	// Create lockdown client
 	ldc, err := idevice.NewLockdownClient(dev.idev)
 	if err != nil {
@@ -81,52 +81,69 @@ func (dev *Device) ReportMetrics(ctx context.Context) (<-chan any, error) {
 		return nil, fmt.Errorf("start diagnostic service: %w", err)
 	}
 
+	// Read initial battery info from device
+	initRes, err := drc.ReadIORegistry("AppleSmartBattery", "")
+	if err != nil {
+		drc.Close()
+		lds.Close()
+		ldc.Close()
+		return nil, fmt.Errorf("read initial battery info from device: %w", err)
+	}
+
+	// Create initial battery metrics
+	initBm, err := batteryMetricsFromIDevice(initRes)
+	if err != nil {
+		drc.Close()
+		lds.Close()
+		ldc.Close()
+		return nil, fmt.Errorf("create initial battery metrics: %w", err)
+	}
+
 	// Spawn Go routine
-	mch := make(chan any)
+	mch := make(chan *BatteryMetrics)
 
 	go func() {
 		// Create ticker
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
+		// Send initial metric
+		mch <- initBm
+
 		// Event loop
+		lastTime := initBm.Time
+
 	loop:
 		for {
 			select {
 			case <-ctx.Done():
-				// Requested to stop
+				// Stop
 				break loop
 
 			case <-ticker.C:
-				// Read battery battery info from device
-				response, err := drc.ReadIORegistry("AppleSmartBattery", "")
+				// Read battery info from device
+				res, err := drc.ReadIORegistry("AppleSmartBattery", "")
 				if err != nil {
-					slog.Error("Unable to read battery info from device", slog.Any("error", err))
+					mch <- batteryMetricsFromError(fmt.Errorf("read battery info from device: %w", err))
 					continue
 				}
 
-				// Parse battery info
-				var battery struct {
-					UpdateTime              uint64 `mapstructure:"UpdateTime"`
-					ExternalConnected       bool   `mapstructure:"ExternalConnected"`
-					IsCharging              bool   `mapstructure:"IsCharging"`
-					FullyCharged            bool   `mapstructure:"FullyCharged"`
-					CycleCount              uint64 `mapstructure:"CycleCount"`
-					DesignCapacity          uint64 `mapstructure:"DesignCapacity"`
-					AppleRawMaxCapacity     uint64 `mapstructure:"AppleRawMaxCapacity"`
-					AppleRawCurrentCapacity uint64 `mapstructure:"AppleRawCurrentCapacity"`
-					AppleRawBatteryVoltage  uint64 `mapstructure:"AppleRawBatteryVoltage"`
-					InstantAmperage         int64  `mapstructure:"InstantAmperage"`
-				}
-
-				err = mapstructure.Decode(response, &battery)
+				// Create battery metrics
+				bm, err := batteryMetricsFromIDevice(res)
 				if err != nil {
-					slog.Error("Unable to parse batter info", slog.Any("error", err))
+					mch <- batteryMetricsFromError(fmt.Errorf("create battery metrics: %w", err))
 					continue
 				}
 
-				// Send
-				mch <- battery
+				// Skip duplicates
+				if bm.Time.Equal(lastTime) {
+					continue
+				}
+
+				lastTime = bm.Time
+
+				// Send out
+				mch <- bm
 			}
 		}
 
