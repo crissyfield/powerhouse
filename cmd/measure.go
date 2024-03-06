@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cobra"
 
-	"github.com/crissyfield/powerhouse/internal/idevice"
+	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
 
 // CmdMeasure defines the CLI sub-command 'list'.
@@ -24,17 +26,17 @@ func init() {
 
 // runMeasure is called when the "test" command is used.
 func runMeasure(_ *cobra.Command, _ []string) {
-	// Create mux
-	mux, err := idevice.NewUSBMux()
+	// Create powerhouse
+	ph, err := powerhouse.New()
 	if err != nil {
-		slog.Error("Unable to create client", slog.Any("error", err))
+		slog.Error("Unable to create powerhouse", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	// Read list of connected devices
-	devices, err := mux.Devices()
+	// Read list of devices
+	devices, err := ph.Devices()
 	if err != nil {
-		slog.Error("Unable to read list of connected devices", slog.Any("error", err))
+		slog.Error("Unable to read list of devices", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
@@ -43,98 +45,35 @@ func runMeasure(_ *cobra.Command, _ []string) {
 		os.Exit(1) //nolint
 	}
 
-	// ...
-	var deviceInfo struct {
-		DeviceName                string `mapstructure:"DeviceName,omitempty"`
-		DeviceColor               string `mapstructure:"DeviceColor,omitempty"`
-		DeviceClass               string `mapstructure:"DeviceClass,omitempty"`
-		ProductVersion            string `mapstructure:"ProductVersion,omitempty"`
-		ProductType               string `mapstructure:"ProductType,omitempty"`
-		ProductName               string `mapstructure:"ProductName,omitempty"`
-		ModelNumber               string `mapstructure:"ModelNumber,omitempty"`
-		SerialNumber              string `mapstructure:"SerialNumber,omitempty"`
-		SIMStatus                 string `mapstructure:"SIMStatus,omitempty"`
-		PhoneNumber               string `mapstructure:"PhoneNumber,omitempty"`
-		CPUArchitecture           string `mapstructure:"CPUArchitecture,omitempty"`
-		ProtocolVersion           string `mapstructure:"ProtocolVersion,omitempty"`
-		RegionInfo                string `mapstructure:"RegionInfo,omitempty"`
-		TelephonyCapability       bool   `mapstructure:"TelephonyCapability,omitempty"`
-		TimeZone                  string `mapstructure:"TimeZone,omitempty"`
-		UniqueDeviceID            string `mapstructure:"UniqueDeviceID,omitempty"`
-		WiFiAddress               string `mapstructure:"WiFiAddress,omitempty"`
-		WirelessBoardSerialNumber string `mapstructure:"WirelessBoardSerialNumber,omitempty"`
-		BluetoothAddress          string `mapstructure:"BluetoothAddress,omitempty"`
-		BuildVersion              string `mapstructure:"BuildVersion,omitempty"`
-	}
+	// Start reporting metrics
+	ctx, cancel := context.WithCancel(context.Background())
 
-	info, err := devices[0].Info()
+	mch, err := devices[0].ReportMetrics(ctx)
 	if err != nil {
-		slog.Error("Unable to read device info", slog.Any("error", err))
+		slog.Error("Unable to start metrics", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
-	err = mapstructure.Decode(info, &deviceInfo)
-	if err != nil {
-		slog.Error("Unable to parse device info", slog.Any("error", err))
-		os.Exit(1) //nolint
+	// Create signal that fires on interrupt
+	cch := make(chan os.Signal, 1)
+	signal.Notify(cch, os.Interrupt)
+
+	// Event loop
+loop:
+	for {
+		select {
+		case <-cch:
+			break loop
+
+		case m := <-mch:
+			fmt.Println(m)
+		}
 	}
 
-	slog.Info("Device Info", slog.Any("info", deviceInfo))
+	// Canceling the context stops reporting
+	cancel()
 
-	// Create lockdown client
-	ldc, err := idevice.NewLockdownClient(devices[0])
-	if err != nil {
-		slog.Error("Unable to create lockdown client", slog.Any("error", err))
-		os.Exit(1) //nolint
+	for range mch { //nolint
+		// Do something with old metrics
 	}
-
-	defer ldc.Close()
-
-	// Start lockdown lds
-	lds, err := ldc.StartSession()
-	if err != nil {
-		slog.Error("Unable to start lockdown session", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	defer lds.Close()
-
-	// Start diagnostic service
-	drc, err := lds.StartDiagnosticRelayService()
-	if err != nil {
-		slog.Error("Unable to start diagnostic relay service", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	defer drc.Close()
-
-	// Read battery IORegistry entries
-	response, err := drc.ReadIORegistry("AppleSmartBattery", "")
-	if err != nil {
-		slog.Error("Unable to read AppleSmartBattery IORegistry entry", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// ...
-	var battery struct {
-		UpdateTime              uint64 `mapstructure:"UpdateTime"`
-		ExternalConnected       bool   `mapstructure:"ExternalConnected"`
-		IsCharging              bool   `mapstructure:"IsCharging"`
-		FullyCharged            bool   `mapstructure:"FullyCharged"`
-		CycleCount              uint64 `mapstructure:"CycleCount"`
-		DesignCapacity          uint64 `mapstructure:"DesignCapacity"`
-		AppleRawMaxCapacity     uint64 `mapstructure:"AppleRawMaxCapacity"`
-		AppleRawCurrentCapacity uint64 `mapstructure:"AppleRawCurrentCapacity"`
-		AppleRawBatteryVoltage  uint64 `mapstructure:"AppleRawBatteryVoltage"`
-		InstantAmperage         int64  `mapstructure:"InstantAmperage"`
-	}
-
-	err = mapstructure.Decode(response, &battery)
-	if err != nil {
-		slog.Error("Unable to unmarshal", slog.Any("error", err))
-		os.Exit(1) //nolint
-	}
-
-	// ...
-	slog.Info("Battery", slog.Any("ioregistry", battery))
 }

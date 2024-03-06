@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/crissyfield/powerhouse/internal/powerhouse"
 	"github.com/spf13/cobra"
+
+	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
 
 // CmdList defines the CLI sub-command 'list'.
@@ -23,22 +24,22 @@ func init() {
 
 // runList is called when the "test" command is used.
 func runList(_ *cobra.Command, _ []string) {
-	// Create client
-	c, err := powerhouse.New()
+	// Create powerhouse
+	ph, err := powerhouse.New()
 	if err != nil {
-		slog.Error("Unable to create client", slog.Any("error", err))
+		slog.Error("Unable to create powerhouse", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Read list of devices
-	devs, err := c.Devices()
+	devices, err := ph.Devices()
 	if err != nil {
 		slog.Error("Unable to read list of devices", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Dump
-	_ = json.NewEncoder(os.Stdout).Encode(devs)
+	_ = json.NewEncoder(os.Stdout).Encode(devices)
 
 	slog.Info("Done")
 }
