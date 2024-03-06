@@ -24,7 +24,7 @@ func init() {
 // runList is called when the "test" command is used.
 func runList(_ *cobra.Command, _ []string) {
 	// Create client
-	c, err := powerhouse.NewClient()
+	c, err := powerhouse.New()
 	if err != nil {
 		slog.Error("Unable to create client", slog.Any("error", err))
 		os.Exit(1) //nolint
