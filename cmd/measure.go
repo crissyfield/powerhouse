@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -74,7 +74,7 @@ loop:
 			}
 
 			// ...
-			fmt.Println(m)
+			_ = json.NewEncoder(os.Stdout).Encode(m)
 		}
 	}
 
