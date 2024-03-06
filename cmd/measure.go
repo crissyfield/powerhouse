@@ -24,15 +24,15 @@ func init() {
 
 // runMeasure is called when the "test" command is used.
 func runMeasure(_ *cobra.Command, _ []string) {
-	// Create client
-	client, err := idevice.NewClient()
+	// Create mux
+	mux, err := idevice.NewUSBMux()
 	if err != nil {
 		slog.Error("Unable to create client", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Read list of connected devices
-	devices, err := client.Devices()
+	devices, err := mux.Devices()
 	if err != nil {
 		slog.Error("Unable to read list of connected devices", slog.Any("error", err))
 		os.Exit(1) //nolint

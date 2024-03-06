@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"log/slog"
+	"os"
 
+	"github.com/crissyfield/powerhouse/internal/powerhouse"
 	"github.com/spf13/cobra"
 )
 
@@ -20,5 +23,22 @@ func init() {
 
 // runList is called when the "test" command is used.
 func runList(_ *cobra.Command, _ []string) {
+	// Create client
+	c, err := powerhouse.NewClient()
+	if err != nil {
+		slog.Error("Unable to create client", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
+
+	// Read list of devices
+	devs, err := c.Devices()
+	if err != nil {
+		slog.Error("Unable to read list of devices", slog.Any("error", err))
+		os.Exit(1) //nolint
+	}
+
+	// Dump
+	_ = json.NewEncoder(os.Stdout).Encode(devs)
+
 	slog.Info("Done")
 }

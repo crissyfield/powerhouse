@@ -7,8 +7,8 @@ import (
 	giDevice "github.com/electricbubble/gidevice"
 )
 
-// Client ...
-type Client struct {
+// USBMux ...
+type USBMux struct {
 	// Underlying USBMUX
 	usbmux giDevice.Usbmux
 
@@ -16,16 +16,16 @@ type Client struct {
 	devicesFn func() ([]*Device, error)
 }
 
-// NewClient ...
-func NewClient() (*Client, error) {
+// NewUSBMux ...
+func NewUSBMux() (*USBMux, error) {
 	// Create USBMUX connection
 	usbmux, err := giDevice.NewUsbmux()
 	if err != nil {
-		return nil, fmt.Errorf("create USBMUX connection: %w", err)
+		return nil, fmt.Errorf("create USBMux connection: %w", err)
 	}
 
 	// Return new client
-	c := &Client{usbmux: usbmux}
+	c := &USBMux{usbmux: usbmux}
 
 	c.devicesFn = c.devicesFnOnce()
 
@@ -33,12 +33,12 @@ func NewClient() (*Client, error) {
 }
 
 // Devices ...
-func (c *Client) Devices() ([]*Device, error) {
-	return c.devicesFn()
+func (mux *USBMux) Devices() ([]*Device, error) {
+	return mux.devicesFn()
 }
 
 // devicesFnOnce ...
-func (c *Client) devicesFnOnce() func() ([]*Device, error) {
+func (mux *USBMux) devicesFnOnce() func() ([]*Device, error) {
 	var devices []*Device
 	var err error
 	var once sync.Once
@@ -47,7 +47,7 @@ func (c *Client) devicesFnOnce() func() ([]*Device, error) {
 	return func() ([]*Device, error) {
 		once.Do(func() {
 			// Get all devices
-			innerDevices, innerErr := c.usbmux.Devices()
+			innerDevices, innerErr := mux.usbmux.Devices()
 			if innerErr != nil {
 				err = fmt.Errorf("read devices: %w", innerErr)
 				return
