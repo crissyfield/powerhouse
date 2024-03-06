@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+
+	"github.com/crissyfield/powerhouse/internal/idevice"
 )
 
 // BatteryMetricsAdapterDetails ...
@@ -24,9 +26,6 @@ type BatteryMetricsAdapterDetails struct {
 
 // BatteryMetrics ...
 type BatteryMetrics struct {
-	// Err is set if there was an error.
-	Err error
-
 	// Time this metric was generated.
 	Time time.Time
 
@@ -82,13 +81,14 @@ type BatteryMetrics struct {
 	AdapterDetails BatteryMetricsAdapterDetails
 }
 
-// batteryMetricsFromError creates a BatteryMetrics object from the given error.
-func batteryMetricsFromError(err error) *BatteryMetrics {
-	return &BatteryMetrics{Err: err}
-}
+// batteryMetricsFromDiagnosticRelayClient reads a BatteryMetrics object from the device.
+func batteryMetricsFromDiagnosticRelayClient(drc *idevice.DiagnosticRelayClient) (*BatteryMetrics, error) {
+	// Read info from device
+	res, err := drc.ReadIORegistry("AppleSmartBattery", "")
+	if err != nil {
+		return nil, fmt.Errorf("read info from device: %w", err)
+	}
 
-// batteryMetricsFromIDevice creates a BatteryMetrics object from the
-func batteryMetricsFromIDevice(in any) (*BatteryMetrics, error) {
 	// Parse battery info
 	var battery struct {
 		UpdateTime              int64  `mapstructure:"UpdateTime"`
@@ -117,9 +117,9 @@ func batteryMetricsFromIDevice(in any) (*BatteryMetrics, error) {
 		} `mapstructure:"AdapterDetails"`
 	}
 
-	err := mapstructure.Decode(in, &battery)
+	err = mapstructure.Decode(res, &battery)
 	if err != nil {
-		return nil, fmt.Errorf("parse battery info: %w", err)
+		return nil, fmt.Errorf("parse info: %w", err)
 	}
 
 	// Send

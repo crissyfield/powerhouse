@@ -57,9 +57,16 @@ func newDevice(idev *idevice.Device) (*Device, error) {
 	}, nil
 }
 
-// ReportBatteryMetrics starts reporting battery metrics on the returned channel, until the context is
+// Metrics ...
+type Metrics struct {
+	Err       error
+	Battery   *BatteryMetrics
+	Backlight *BacklightMetrics
+}
+
+// ReportMetrics starts reporting battery and backlight metrics on the returned channel, until the context is
 // canceled.
-func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMetrics, error) {
+func (dev *Device) ReportMetrics(ctx context.Context) (<-chan *Metrics, error) {
 	// Create lockdown client
 	ldc, err := idevice.NewLockdownClient(dev.idev)
 	if err != nil {
@@ -81,17 +88,8 @@ func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMet
 		return nil, fmt.Errorf("start diagnostic service: %w", err)
 	}
 
-	// Read initial battery info from device
-	initRes, err := drc.ReadIORegistry("AppleSmartBattery", "")
-	if err != nil {
-		drc.Close()
-		lds.Close()
-		ldc.Close()
-		return nil, fmt.Errorf("read initial battery info from device: %w", err)
-	}
-
-	// Create initial battery metrics
-	initBm, err := batteryMetricsFromIDevice(initRes)
+	// Read initial battery metrics
+	initBattery, err := batteryMetricsFromDiagnosticRelayClient(drc)
 	if err != nil {
 		drc.Close()
 		lds.Close()
@@ -99,19 +97,28 @@ func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMet
 		return nil, fmt.Errorf("create initial battery metrics: %w", err)
 	}
 
+	// Read initial backlight metrics
+	initBacklight, err := backlightMetricsFromDiagnosticRelayClient(drc)
+	if err != nil {
+		drc.Close()
+		lds.Close()
+		ldc.Close()
+		return nil, fmt.Errorf("create initial backlight metrics: %w", err)
+	}
+
 	// Spawn Go routine
-	mch := make(chan *BatteryMetrics)
+	metrics := make(chan *Metrics)
 
 	go func() {
 		// Create ticker
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
-		// Send initial metric
-		mch <- initBm
+		// Send initial metrics
+		metrics <- &Metrics{Battery: initBattery, Backlight: initBacklight}
 
 		// Event loop
-		lastTime := initBm.Time
+		lastBatteryTime := initBattery.Time
 
 	loop:
 		for {
@@ -121,29 +128,29 @@ func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMet
 				break loop
 
 			case <-ticker.C:
-				// Read battery info from device
-				res, err := drc.ReadIORegistry("AppleSmartBattery", "")
+				// Read battery metrics
+				battery, err := batteryMetricsFromDiagnosticRelayClient(drc)
 				if err != nil {
-					mch <- batteryMetricsFromError(fmt.Errorf("read battery info from device: %w", err))
-					continue
-				}
-
-				// Create battery metrics
-				bm, err := batteryMetricsFromIDevice(res)
-				if err != nil {
-					mch <- batteryMetricsFromError(fmt.Errorf("create battery metrics: %w", err))
+					metrics <- &Metrics{Err: fmt.Errorf("read battery metrics: %w", err)}
 					continue
 				}
 
 				// Skip duplicates
-				if bm.Time.Equal(lastTime) {
+				if battery.Time.Equal(lastBatteryTime) {
 					continue
 				}
 
-				lastTime = bm.Time
+				lastBatteryTime = battery.Time
+
+				// Read backlight metrics
+				backlight, err := backlightMetricsFromDiagnosticRelayClient(drc)
+				if err != nil {
+					metrics <- &Metrics{Err: fmt.Errorf("read backlight info from device: %w", err)}
+					continue
+				}
 
 				// Send out
-				mch <- bm
+				metrics <- &Metrics{Battery: battery, Backlight: backlight}
 			}
 		}
 
@@ -152,9 +159,9 @@ func (dev *Device) ReportBatteryMetrics(ctx context.Context) (<-chan *BatteryMet
 		lds.Close()
 		ldc.Close()
 
-		// Indicate that we're done
-		close(mch)
+		// We're done
+		close(metrics)
 	}()
 
-	return mch, nil
+	return metrics, nil
 }

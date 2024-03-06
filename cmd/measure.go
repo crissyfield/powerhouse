@@ -48,26 +48,26 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	// Start reporting metrics
 	ctx, cancel := context.WithCancel(context.Background())
 
-	mch, err := devices[0].ReportBatteryMetrics(ctx)
+	metrics, err := devices[0].ReportMetrics(ctx)
 	if err != nil {
 		slog.Error("Unable to start metrics", slog.Any("error", err))
 		os.Exit(1) //nolint
 	}
 
 	// Create signal that fires on interrupt
-	cch := make(chan os.Signal, 1)
-	signal.Notify(cch, os.Interrupt)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
 
 	// Event loop
 loop:
 	for {
 		select {
-		case <-cch:
+		case <-stop:
 			// Stop
 			break loop
 
-		case m := <-mch:
-			// Report
+		case m := <-metrics:
+			// Process metrics
 			if m.Err != nil {
 				slog.Error("Unable to report error", slog.Any("error", m.Err))
 				os.Exit(1) //nolint
@@ -81,7 +81,7 @@ loop:
 	// Canceling the context stops reporting
 	cancel()
 
-	for range mch { //nolint
+	for range metrics { //nolint
 		// Do something with old metrics
 	}
 }
