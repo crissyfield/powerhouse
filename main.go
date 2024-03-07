@@ -29,8 +29,8 @@ var CmdRoot = &cobra.Command{
 // Initialize CLI options.
 func init() {
 	// Logging
-	CmdRoot.PersistentFlags().String("log-level", "info", "verbosity of logging output")
-	CmdRoot.PersistentFlags().Bool("log-as-json", false, "change logging format to JSON")
+	CmdRoot.PersistentFlags().StringP("log-level", "l", "info", "verbosity of logging output")
+	CmdRoot.PersistentFlags().BoolP("log-as-json", "j", false, "change logging format to JSON")
 
 	// Subcommands
 	CmdRoot.AddCommand(cmd.CmdList)

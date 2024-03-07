@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
@@ -22,6 +24,8 @@ var CmdMeasure = &cobra.Command{
 
 // Initialize CLI options.
 func init() {
+	// Measure
+	CmdMeasure.Flags().DurationP("duration", "d", 10*time.Minute, "max duration of the measurement")
 }
 
 // runMeasure is called when the "test" command is used.
@@ -58,22 +62,31 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
 
+	// Create timer that fires an interrupt
+	expired := time.NewTimer(viper.GetDuration("duration"))
+
 	// Event loop
 loop:
 	for {
 		select {
 		case <-stop:
 			// Stop
+			slog.Info("Stop requested")
+			break loop
+
+		case <-expired.C:
+			// Stop
+			slog.Info("Time is up")
 			break loop
 
 		case m := <-metrics:
-			// Process metrics
+			// Handling of potential errors
 			if m.Err != nil {
 				slog.Error("Unable to report error", slog.Any("error", m.Err))
 				os.Exit(1) //nolint
 			}
 
-			// ...
+			// Report
 			_ = json.NewEncoder(os.Stdout).Encode(m)
 		}
 	}
