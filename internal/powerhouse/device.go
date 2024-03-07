@@ -12,12 +12,13 @@ import (
 
 // Device wraps information of a specific iDevice.
 type Device struct {
-	UDID        string // Unique device ID
-	Name        string // Device name
-	Type        string // Device type
-	OSVersion   string // Version of the installed OS
-	OSBuild     string // Build number of the installed OS
-	WiFiAddress string // MAC address of the device
+	ConnectionType string // Either "USB" or "Network"
+	UDID           string // Unique device ID
+	Name           string // Device name
+	Type           string // Device type
+	OSVersion      string // Version of the installed OS
+	OSBuild        string // Build number of the installed OS
+	WiFiAddress    string // MAC address of the device
 
 	idev *idevice.Device
 }
@@ -32,12 +33,12 @@ func newDevice(idev *idevice.Device) (*Device, error) {
 
 	// Parse device info
 	var di struct {
-		UniqueDeviceID string `mapstructure:"UniqueDeviceID,omitempty"`
-		DeviceName     string `mapstructure:"DeviceName,omitempty"`
-		ProductType    string `mapstructure:"ProductType,omitempty"`
-		ProductVersion string `mapstructure:"ProductVersion,omitempty"`
-		BuildVersion   string `mapstructure:"BuildVersion,omitempty"`
-		WiFiAddress    string `mapstructure:"WiFiAddress,omitempty"`
+		UniqueDeviceID string `mapstructure:"UniqueDeviceID"`
+		DeviceName     string `mapstructure:"DeviceName"`
+		ProductType    string `mapstructure:"ProductType"`
+		ProductVersion string `mapstructure:"ProductVersion"`
+		BuildVersion   string `mapstructure:"BuildVersion"`
+		WiFiAddress    string `mapstructure:"WiFiAddress"`
 	}
 
 	err = mapstructure.Decode(info, &di)
@@ -47,13 +48,14 @@ func newDevice(idev *idevice.Device) (*Device, error) {
 
 	// Return device
 	return &Device{
-		UDID:        di.UniqueDeviceID,
-		Name:        di.DeviceName,
-		Type:        di.ProductType,
-		OSVersion:   di.ProductVersion,
-		OSBuild:     di.BuildVersion,
-		WiFiAddress: di.WiFiAddress,
-		idev:        idev,
+		ConnectionType: idev.ConnectionType(),
+		UDID:           di.UniqueDeviceID,
+		Name:           di.DeviceName,
+		Type:           di.ProductType,
+		OSVersion:      di.ProductVersion,
+		OSBuild:        di.BuildVersion,
+		WiFiAddress:    di.WiFiAddress,
+		idev:           idev,
 	}, nil
 }
 

@@ -37,6 +37,12 @@ func newDevice(device giDevice.Device) *Device {
 	return dev
 }
 
+// ConnectionType ...
+func (dev *Device) ConnectionType() string {
+	// ...
+	return dev.dev.Properties().ConnectionType
+}
+
 // Info ...
 func (dev *Device) Info() (any, error) {
 	// Get internal lockdown client
