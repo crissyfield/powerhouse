@@ -26,6 +26,8 @@ var CmdMeasure = &cobra.Command{
 func init() {
 	// Measure
 	CmdMeasure.Flags().DurationP("duration", "d", 10*time.Minute, "max duration of the measurement")
+	CmdMeasure.Flags().BoolP("usb", "u", true, "allow USB devices")
+	CmdMeasure.Flags().BoolP("network", "n", true, "allow network devices")
 }
 
 // runMeasure is called when the "test" command is used.
@@ -38,7 +40,11 @@ func runMeasure(_ *cobra.Command, _ []string) {
 	}
 
 	// Read list of devices
-	devices, err := ph.Devices()
+	devices, err := ph.Devices(
+		viper.GetBool("usb"),
+		viper.GetBool("network"),
+	)
+
 	if err != nil {
 		slog.Error("Unable to read list of devices", slog.Any("error", err))
 		os.Exit(1) //nolint

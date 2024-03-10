@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/crissyfield/powerhouse/internal/powerhouse"
 )
@@ -20,6 +21,9 @@ var CmdList = &cobra.Command{
 
 // Initialize CLI options.
 func init() {
+	// List
+	CmdList.Flags().BoolP("usb", "u", true, "allow USB devices")
+	CmdList.Flags().BoolP("network", "n", true, "allow network devices")
 }
 
 // runList is called when the "test" command is used.
@@ -32,7 +36,11 @@ func runList(_ *cobra.Command, _ []string) {
 	}
 
 	// Read list of devices
-	devices, err := ph.Devices()
+	devices, err := ph.Devices(
+		viper.GetBool("usb"),
+		viper.GetBool("network"),
+	)
+
 	if err != nil {
 		slog.Error("Unable to read list of devices", slog.Any("error", err))
 		os.Exit(1) //nolint

@@ -23,7 +23,7 @@ func New() (*Powerhouse, error) {
 }
 
 // Devices ...
-func (c *Powerhouse) Devices() ([]*Device, error) {
+func (c *Powerhouse) Devices(isUSB bool, isNetwork bool) ([]*Device, error) {
 	// Get list of connected devices
 	idevs, err := c.mux.Devices()
 	if err != nil {
@@ -34,6 +34,15 @@ func (c *Powerhouse) Devices() ([]*Device, error) {
 	devices := make([]*Device, 0, len(idevs))
 
 	for _, idev := range idevs {
+		// Filter
+		if !isUSB && (idev.ConnectionType() == "USB") {
+			continue
+		}
+
+		if !isNetwork && (idev.ConnectionType() == "Network") {
+			continue
+		}
+
 		// Create device
 		device, err := newDevice(idev)
 		if err != nil {
